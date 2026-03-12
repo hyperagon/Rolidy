@@ -1,6 +1,4 @@
 <!--
-    Alright, this is a really hard problem, see I have a huge melody and audio file and you can't seem to update this without removing features so let's do it step by step. The objective is for the playhead to start on the left as it is doing but once it reaches the center the grid moves instead then on the end it stops and goes and plays to the right/end. (edited startPlayback, drawPlayHead, refreshLiveAudio)
-    
     Fix this, the playhead properly starts at the left, goes right until the center but it freezes instead of stopping at the center. Only touch drawPlayHead
     
     Give me full updated functions, I need to know exactly where to put them.
@@ -9,7 +7,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Rolldiy 5.4</title>
+<title>Rollidy 5.4</title>
 <style>
   .label-row:nth-child(even) {
     background: var(--pair-row-bg);
@@ -2013,8 +2011,6 @@ window.addEventListener('keydown', e => {
     }
   }
 
-  // ... rest of existing keydown logic ...
-  
   if (e.code === 'Space') {
     e.preventDefault();
     if (isPlaying) stopPlayback(); else startPlayback();
@@ -2846,3 +2842,4 @@ if (c4Index !== -1) {
 redrawAll();
 </script>
 </body>
+</html>

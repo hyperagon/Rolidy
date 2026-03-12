@@ -1,20 +1,13 @@
 <!--
-    Human Intervention:
-        - Inst # => Instrument # (on Generator)
-        - Switched the Generator Octave: section to numeric drop-downs
-        
-    Update the CSS to place Minimum and Maximum Octave side-by-side.
+    Pressing H should flip the selection horizontally. (edited flipSelectionHorizontal)
     
-    Human Intervention:
-        - Made the Generator more compact while keeping all controls
-        - Switched drop-downs for numeric inputs
-    
-    Give me the updated code segments.
+    Give me full updated functions, I need to know exactly where to put them.
 -->
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Rolldiy 4.2</title>
+<title>Rollidy 5.8</title>
 <style>
   .label-row:nth-child(even) {
     background: var(--pair-row-bg);
@@ -305,6 +298,17 @@
     overflow: hidden;
   }
   
+  /* Drag and Drop Visual Feedback */
+  body.drag-over #pianoRollContainer {
+    border: 3px dashed #4CAF50;
+    background: rgba(76, 175, 80, 0.1);
+    box-sizing: border-box;
+  }
+  
+  body.drag-over {
+    cursor: copy;
+  }
+  
   #labelsCol {
     width: 50px;
     flex-shrink: 0;
@@ -537,11 +541,13 @@ function populateWaveTypeSelector() {
   </div>
   
   <button id="playBtn">▶ Play</button>
-  <!-- FIX: Added explicit onclick handler for Stop -->
-  <button id="stopBtn" onclick="stopPlayback()">⏹ Stop</button>
   <button id="generateBtn">Generate</button>
   <!-- FIX: Added explicit onclick handler for Clear -->
   <button id="clearBtn" onclick="clearGrid()">Clear</button>
+  
+  <!-- NEW: Undo / Redo Buttons -->
+  <button id="undoBtn" onclick="undo()" title="Undo (Ctrl+Z)">↶ Undo</button>
+  <button id="redoBtn" onclick="redo()" title="Redo (Ctrl+Y)">↷ Redo</button>
   
   <label>BPM <input type="number" id="bpmInput" value="120" min="20" max="300" style="width: 50px;"></label>
 
@@ -552,6 +558,8 @@ function populateWaveTypeSelector() {
   <label>Light
     <input type="checkbox" id="lightMode" />
   </label>
+  
+  <button id="helpBtn" style="margin-left: auto; background: #333; color: white; border-radius: 50%; width: 24px; height: 24px; padding: 0; line-height: 24px; font-weight: bold;" onclick="showHelp()">?</button>
 </div>
 
 <div id="instrumentModal" class="modal">
@@ -688,12 +696,17 @@ for (let oct = 1; oct <= 7; oct++) {
   const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   notes.forEach(n => PITCHES.push(n + oct));
 }
+// Reverse to go B7 -> C1
+PITCHES.reverse(); 
 
 const BEATS = 64;
 const SUBDIV = 4;
 const STEPS = BEATS * SUBDIV;
 const CELL_W = 40;
 const CELL_H = 20;
+
+// Height buffer to push the bottom scrollbar below the C1 row
+const SCROLLBAR_HEIGHT = 20; 
 
 let TEMPO = 120; 
 let stepSec = (60 / TEMPO) / SUBDIV;
@@ -767,7 +780,8 @@ let currentInstrument = 0;
 const canvas = document.getElementById('rollCanvas');
 const ctx = canvas.getContext('2d');
 canvas.width = STEPS * CELL_W;
-canvas.height = PITCHES.length * CELL_H;
+// Add padding to height so scrollbar sits under the last row
+canvas.height = PITCHES.length * CELL_H + SCROLLBAR_HEIGHT;
 
 const labelsCol = document.getElementById('labelsCol');
 const container = document.getElementById('canvasScroller'); 
@@ -778,6 +792,12 @@ PITCHES.forEach(p => {
   div.innerText = p;
   labelsCol.appendChild(div);
 });
+
+// Add a spacer to the labels column to match canvas padding
+// This ensures the label column can scroll "past" C1 just like the canvas
+const spacer = document.createElement('div');
+spacer.style.height = SCROLLBAR_HEIGHT + 'px';
+labelsCol.appendChild(spacer);
 
 container.addEventListener('scroll', () => {
   labelsCol.scrollTop = container.scrollTop;
@@ -1070,59 +1090,212 @@ function updateMelodyTable() {
 /* -------------------------------------------------
    JSON IMPORT / EXPORT
    ------------------------------------------------- */
-document.getElementById('exportJsonBtn').addEventListener('click', () => {
-  const list = generateMelodyList();
-  const data = {
-    name: "Hexano Melody",
-    date: new Date().toISOString(),
-    notes: list.map(n => ({
-      note: n.note,
-      freq: n.freq,
-      time: n.time,
-      duration: n.duration
-    }))
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `rollidy_melody_${Date.now()}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-});
+   
+// Helper function to parse and load JSON data
+function loadMelodyFromJson(jsonString) {
+  let data;
+  
+  // 1. Parse JSON
+  try {
+    data = JSON.parse(jsonString);
+  } catch (e) {
+    alert("Declarative Error: File is not valid JSON format. Check for missing commas or brackets.");
+    return;
+  }
 
+  // 2. Validate Root Structure
+  if (typeof data !== 'object' || data === null) {
+    alert("Declarative Error: JSON root must be an object, found " + typeof data + ".");
+    return;
+  }
+
+  // 3. Validate 'notes' array (Strict Requirement)
+  if (!data.notes) {
+    alert("Declarative Error: Missing required field 'notes'.");
+    return;
+  }
+  if (!Array.isArray(data.notes)) {
+    alert("Declarative Error: Field 'notes' must be an array, found " + typeof data.notes + ".");
+    return;
+  }
+
+  // 4. Validate BPM (Strict Check)
+  // If BPM is present, it must be a valid number. Otherwise we keep current TEMPO.
+  if (data.bpm !== undefined) {
+    if (typeof data.bpm !== 'number' || isNaN(data.bpm)) {
+      alert("Declarative Error: 'bpm' field is present but is not a valid number.");
+      return;
+    }
+    if (data.bpm < 20 || data.bpm > 300) {
+      alert("Declarative Error: 'bpm' value " + data.bpm + " is out of bounds (20-300).");
+      return;
+    }
+    updateTempo(data.bpm);
+    document.getElementById('bpmInput').value = TEMPO;
+  }
+
+  // 5. Validate Subdivision (Strict Check)
+  // If Subdivision is present, it must match the engine's expectation (4) to ensure correct timing.
+  if (data.subdivision !== undefined) {
+    if (typeof data.subdivision !== 'number' || isNaN(data.subdivision)) {
+      alert("Declarative Error: 'subdivision' field is present but is not a valid number.");
+      return;
+    }
+    if (data.subdivision !== SUBDIV) {
+      alert("Declarative Error: Imported subdivision (" + data.subdivision + ") does not match engine subdivision (" + SUBDIV + "). Cannot safely import timing data.");
+      return;
+    }
+  }
+
+  // 6. Handle Default Values for Name and Date
+  // If missing, we assign defaults silently or warn. Here we assign defaults to keep the session clean.
+  if (!data.name) {
+    data.name = "Imported Composition";
+  }
+  if (!data.date) {
+    data.date = new Date().toISOString();
+  }
+
+  pushUndo(); // Save current state to Undo stack
+
+  // 7. Clear the current grid
+  for (let i = 0; i < STEPS; i++) notes[i].fill(0);
+
+  // 8. Parse Notes with Validation
+  for (let i = 0; i < data.notes.length; i++) {
+    const n = data.notes[i];
+    
+    // Validate note object structure
+    if (typeof n.note !== 'string') continue; // Skip invalid entries silently or warn
+    if (typeof n.time !== 'number' || typeof n.duration !== 'number') continue;
+
+    const pitchIdx = PITCHES.indexOf(n.note);
+    if (pitchIdx === -1) continue; // Skip if note name is invalid
+
+    const step = Math.round(n.time / 1000 / stepSec);
+    if (step < 0 || step >= STEPS) continue;
+
+    const durationSteps = Math.round(n.duration / 1000 / stepSec);
+    const instIdx = (n.instrument !== undefined && n.instrument >= 0 && n.instrument < 4) ? n.instrument : 0;
+    const bit = 1 << instIdx;
+
+    for (let k = 0; k < durationSteps; k++) {
+      const s = step + k;
+      if (s < STEPS) {
+        notes[s][pitchIdx] |= bit;
+      }
+    }
+  }
+
+  redrawAll();
+  
+  if (isPlaying) stopPlayback();
+}
+
+// Standard File Input Handler
 const jsonFileInput = document.getElementById('jsonFileInput');
 document.getElementById('importJsonBtn').addEventListener('click', () => jsonFileInput.click());
+
+// --- ADDED: Export Listeners ---
+document.getElementById('exportJsonBtn').addEventListener('click', exportJson);
+document.getElementById('exportAudioBtn').addEventListener('click', exportWav);
 
 jsonFileInput.addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = (ev) => {
-    try {
-      const data = JSON.parse(ev.target.result);
-      if (data.notes && Array.isArray(data.notes)) {
-        for (let i = 0; i < STEPS; i++) notes[i].fill(0);
-        data.notes.forEach(n => {
-          const pitchIdx = PITCHES.indexOf(n.note);
-          const step = Math.round(n.time / 1000 / stepSec);
-          const durSteps = Math.round(n.duration / 1000 / stepSec);
-          if (pitchIdx !== -1 && step >= 0 && step < STEPS) {
-            const instIdx = 0; 
-            const bit = 1 << instIdx;
-            for (let s = step; s < step + durSteps && s < STEPS; s++) {
-              notes[s][pitchIdx] |= bit;
-            }
-          }
-        });
-        redrawAll();
-        updateMelodyTable();
-      } else { alert("Invalid JSON format."); }
-    } catch (err) { alert("Error parsing JSON: " + err); }
-  };
+  reader.onload = (ev) => loadMelodyFromJson(ev.target.result);
   reader.readAsText(file);
   e.target.value = ''; 
+})
+
+/* -------------------------------------------------
+   DRAG AND DROP IMPLEMENTATION
+   ------------------------------------------------- */
+function preventDefaults(e) {
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+// 1. Prevent default browser behavior for drag events
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+  document.body.addEventListener(eventName, preventDefaults, false);
 });
+
+// 2. Handle Visual Highlighting
+['dragenter', 'dragover'].forEach(eventName => {
+  document.body.addEventListener(eventName, () => {
+    document.body.classList.add('drag-over');
+  }, false);
+});
+
+['dragleave', 'drop'].forEach(eventName => {
+  document.body.addEventListener(eventName, () => {
+    document.body.classList.remove('drag-over');
+  }, false);
+});
+
+// 3. Handle the Drop
+document.body.addEventListener('drop', (e) => {
+  const dt = e.dataTransfer;
+  const files = dt.files;
+
+  if (files.length > 0) {
+    const file = files[0];
+    // Check if it's a JSON file
+    if (file.type === 'application/json' || file.name.endsWith('.json')) {
+      const reader = new FileReader();
+      reader.onload = (ev) => loadMelodyFromJson(ev.target.result);
+      reader.readAsText(file);
+    } else {
+      alert("Please drop a valid .json file.");
+    }
+  }
+}, false);
+
+/* -------------------------------------------------
+   DRAG AND DROP IMPLEMENTATION
+   ------------------------------------------------- */
+function preventDefaults(e) {
+  e.preventDefault();
+  e.stopPropagation();
+}
+
+// 1. Prevent default browser behavior for drag events
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+  document.body.addEventListener(eventName, preventDefaults, false);
+});
+
+// 2. Handle Visual Highlighting
+['dragenter', 'dragover'].forEach(eventName => {
+  document.body.addEventListener(eventName, () => {
+    document.body.classList.add('drag-over');
+  }, false);
+});
+
+['dragleave', 'drop'].forEach(eventName => {
+  document.body.addEventListener(eventName, () => {
+    document.body.classList.remove('drag-over');
+  }, false);
+});
+
+// 3. Handle the Drop
+document.body.addEventListener('drop', (e) => {
+  const dt = e.dataTransfer;
+  const files = dt.files;
+
+  if (files.length > 0) {
+    const file = files[0];
+    // Check if it's a JSON file
+    if (file.type === 'application/json' || file.name.endsWith('.json')) {
+      const reader = new FileReader();
+      reader.onload = (ev) => loadMelodyFromJson(ev.target.result);
+      reader.readAsText(file);
+    } else {
+      alert("Please drop a valid .json file.");
+    }
+  }
+}, false);
 
 /* -------------------------------------------------
    AUDIO IMPORT
@@ -1159,7 +1332,8 @@ function convertAudioToNotes(buffer) {
     const freq = autoCorrelate(chunk, sampleRate);
     if (freq !== -1) {
       const midi = Math.round(12 * Math.log2(freq / 440) + 69);
-      const pitchIdx = midi - 24; 
+      // Updated logic: Map MIDI to reversed index
+      const pitchIdx = 107 - midi; 
       if (pitchIdx >= 0 && pitchIdx < PITCHES.length) {
         notes[s][pitchIdx] |= (1 << 0); 
       }
@@ -1228,12 +1402,8 @@ function handleCopy() {
   clipboard = selectedCorners.map(c => ({
     dStep: c.step - minStep,
     dPitch: c.pitch - minPitch,
-    instIdx: c.instIdx,
-    isPause: c.isPause
+    instIdx: c.instIdx
   }));
-  
-  // Optional: Visual feedback
-  console.log(`Copied ${clipboard.length} notes.`);
 }
 
 function handlePaste() {
@@ -1253,7 +1423,7 @@ function handlePaste() {
     
     // Check boundaries
     if (targetStep >= 0 && targetStep < STEPS && targetPitch >= 0 && targetPitch < PITCHES.length) {
-      const bit = c.isPause ? (1 << (c.instIdx + 4)) : (1 << c.instIdx);
+      const bit = 1 << c.instIdx;
       
       // Place note (using OR to preserve existing notes, typical for piano rolls)
       notes[targetStep][targetPitch] |= bit;
@@ -1262,8 +1432,7 @@ function handlePaste() {
       newSelection.push({ 
         step: targetStep, 
         pitch: targetPitch, 
-        instIdx: c.instIdx, 
-        isPause: c.isPause 
+        instIdx: c.instIdx
       });
     }
   });
@@ -1378,7 +1547,6 @@ function drawDraggedNotes() {
     const finalX = cx + stepDeltaPx;
     const finalY = cy + pitchDeltaPx;
 
-    ctx.fillStyle = c.isPause ? getPauseColor() : getWaveColor(c.instIdx);
     ctx.fillRect(finalX + 1, finalY + 1, w2 - 2, h2 - 2);
     
     ctx.strokeStyle = lightModeToggle.checked ? '#000' : '#fff';
@@ -1416,14 +1584,14 @@ function drawNotes() {
       
       for (let i = 0; i < 4; i++) {
         if (mask & (1 << i)) {
-           if (isDraggingSelection && selectedCorners.some(c => c.step ===step && c.pitch===pitch && c.instIdx===i && !c.isPause)) continue;
+           if (isDraggingSelection && selectedCorners.some(c => c.step===step && c.pitch===pitch && c.instIdx===i)) continue;
            drawCorner(x, y, i);
         }
       }
       
       for (let i = 0; i < 4; i++) {
         if (mask & (1 << (i + 4))) {
-           if (isDraggingSelection && selectedCorners.some(c => c.step===step && c.pitch===pitch && c.instIdx===i && c.isPause)) continue;
+           if (isDraggingSelection && selectedCorners.some(c => c.step===step && c.pitch===pitch && c.instIdx===i)) continue;
            drawPauseCorner(x, y, i);
         }
       }
@@ -1559,7 +1727,7 @@ function deleteSelectedNotes() {
   pushUndo(); // Save state for undo
   
   selectedCorners.forEach(c => {
-    const bit = c.isPause ? (1 << (c.instIdx + 4)) : (1 << c.instIdx);
+    const bit = 1 << c.instIdx;
     notes[c.step][c.pitch] &= ~bit;
   });
   
@@ -1587,36 +1755,287 @@ function redo() {
 }
 
 /* -------------------------------------------------
+   MOVE SELECTION HELPER
+   ------------------------------------------------- */
+/* -------------------------------------------------
+   MOVE SELECTION HELPER
+   ------------------------------------------------- */
+function moveSelection(dStep, dPitch) {
+  if (selectedCorners.length === 0) return;
+
+  // 1. Calculate new positions and validate bounds
+  const newCorners = [];
+  for (let c of selectedCorners) {
+    const newStep = c.step + dStep;
+    const newPitch = c.pitch + dPitch;
+
+    // Check boundaries
+    if (newStep < 0 || newStep >= STEPS || newPitch < 0 || newPitch >= PITCHES.length) {
+      return; // Stop if any note goes out of bounds
+    }
+    
+    newCorners.push({
+      step: newStep,
+      pitch: newPitch,
+      instIdx: c.instIdx
+    });
+  }
+
+  // 2. Save state for Undo
+  pushUndo();
+
+  // 3. Apply changes to the 'notes' grid
+  // Clear old positions
+  selectedCorners.forEach(c => {
+    const bit = 1 << c.instIdx;
+    notes[c.step][c.pitch] &= ~bit;
+  });
+
+  // Set new positions
+  newCorners.forEach(c => {
+    const bit = 1 << c.instIdx;
+    notes[c.step][c.pitch] |= bit;
+  });
+
+  // 4. Update the selection state to the new positions
+  selectedCorners = newCorners;
+  
+  redrawAll();
+  
+  // Refresh audio if currently playing
+  if (isPlaying) refreshLiveAudio();
+}
+
+/* -------------------------------------------------
+   FLIP SELECTION HELPERS
+   ------------------------------------------------- */
+
+function flipSelectionHorizontal() {
+  if (selectedCorners.length === 0) return;
+
+  // 1. Calculate Bounding Box
+  let minStep = Infinity, maxStep = -Infinity;
+  selectedCorners.forEach(c => {
+    if (c.step < minStep) minStep = c.step;
+    if (c.step > maxStep) maxStep = c.step;
+  });
+
+  // Center of the selection in steps
+  const centerX = (minStep + maxStep) / 2;
+
+  pushUndo();
+
+  // 2. Clear old positions first
+  // FIX: Define 'bit' correctly inside the loop to prevent reference errors
+  selectedCorners.forEach(c => {
+    const bit = 1 << c.instIdx;
+    notes[c.step][c.pitch] &= ~bit;
+  });
+
+  // 3. Calculate and place new positions
+  const newCorners = [];
+  
+  selectedCorners.forEach(c => {
+    // New Step = Center + (Center - Old Step) = 2*Center - Old Step
+    const newStep = Math.round(2 * centerX - c.step);
+    
+    // Pitch remains the same
+    const newPitch = c.pitch;
+
+    // Boundary check
+    if (newStep >= 0 && newStep < STEPS) {
+      const bit = 1 << c.instIdx;
+      notes[newStep][newPitch] |= bit;
+      
+      newCorners.push({
+        step: newStep,
+        pitch: newPitch,
+        instIdx: c.instIdx
+      });
+    }
+  });
+
+  selectedCorners = newCorners;
+  redrawAll();
+  if (isPlaying) refreshLiveAudio();
+}
+
+function flipSelectionVertical() {
+  if (selectedCorners.length === 0) return;
+
+  // 1. Calculate Bounding Box
+  let minPitch = Infinity, maxPitch = -Infinity;
+  selectedCorners.forEach(c => {
+    if (c.pitch < minPitch) minPitch = c.pitch;
+    if (c.pitch > maxPitch) maxPitch = c.pitch;
+  });
+
+  // Center of the selection in pitches
+  const centerY = (minPitch + maxPitch) / 2;
+
+  pushUndo();
+
+  // 2. Prepare new positions
+  const newCorners = [];
+
+  // Clear old positions first
+  selectedCorners.forEach(c => {
+    const bit = 1 << c.instIdx;
+    notes[c.step][c.pitch] &= ~bit;
+  });
+
+  // Calculate and place new positions
+  selectedCorners.forEach(c => {
+    // New Pitch = Center + (Center - Old Pitch) = 2*Center - Old Pitch
+    const newPitch = Math.round(2 * centerY - c.pitch);
+    
+    // Step remains the same
+    const newStep = c.step;
+
+    // Boundary check
+    if (newPitch >= 0 && newPitch < PITCHES.length) {
+      const bit = 1 << c.instIdx;
+      notes[newStep][newPitch] |= bit;
+      
+      newCorners.push({
+        step: newStep,
+        pitch: newPitch,
+        instIdx: c.instIdx
+      });
+    }
+  });
+
+  selectedCorners = newCorners;
+  redrawAll();
+  if (isPlaying) refreshLiveAudio();
+}
+
+/* -------------------------------------------------
    EVENT LISTENERS
    ------------------------------------------------- */
+
 window.addEventListener('keydown', e => {
   const active = document.activeElement;
+  // Ignore shortcuts if typing in an input field
   if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) return;
   
   // Handle Delete / Backspace
   if (e.key === 'Delete' || e.key === 'Backspace') {
-    e.preventDefault(); // Prevent browser back navigation on Backspace
+    e.preventDefault(); 
     deleteSelectedNotes();
     return;
   }
 
-  if (e.key === 'z' || e.key === 'Z') { e.preventDefault(); undo(); return; }
-  if (e.key === 'y' || e.key === 'Y') { e.preventDefault(); redo(); return; }
+  // Handle Copy (C)
+  if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
+    e.preventDefault();
+    handleCopy();
+    return;
+  }
+
+  // Handle Paste (V)
+  if (e.ctrlKey && (e.key === 'v' || e.key === 'V')) {
+    e.preventDefault();
+    handlePaste();
+    return;
+  }
+
+  // Handle Cut (X)
+  if (e.key === 'x' || e.key === 'X') {
+    e.preventDefault();
+    handleCopy(); // Copy first
+    deleteSelectedNotes(); // Then delete
+    return;
+  }
+  
+  // Handle Select All (A)
+  if (e.key === 'a' || e.key === 'A') {
+    e.preventDefault();
+    
+    // If Ctrl is held, we add to selection, otherwise we replace it
+    if (!e.ctrlKey) selectedCorners = [];
+      
+    // Iterate through the entire grid to find notes
+    for (let step = 0; step < STEPS; step++) {
+      for (let pitch = 0; pitch < PITCHES.length; pitch++) {
+        const mask = notes[step][pitch];
+        if (mask === 0) continue;
+          
+        // Check all 4 instruments
+        for (let i = 0; i < 4; i++) {
+          const instBit = 1 << i;
+          const pauseBit = 1 << (i + 4);
+            
+          if (mask & instBit) {
+            selectedCorners.push({ step, pitch, instIdx: i});
+          }
+          if (mask & pauseBit) {
+            selectedCorners.push({ step, pitch, instIdx: i});
+          }
+        }
+      }
+    }
+    redrawAll();
+    return;
+  }
+
+  // Undo (Z)
+  if (e.key === 'z' || e.key === 'Z') { 
+    e.preventDefault(); 
+    undo(); 
+    return; 
+  }
+  
+  // Redo (Y)
+  if (e.key === 'y' || e.key === 'Y') { 
+    e.preventDefault(); 
+    redo(); 
+    return; 
+  }
+  
+  // Handle Flip Vertical (V)
+  if (e.key === 'v' || e.key === 'V') {
+    // Only flip if we aren't typing in an input field
+    if (!(active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA'))) {
+      e.preventDefault();
+      flipSelectionVertical();
+      return;
+    }
+  }
+
+  // Handle Flip Horizontal (H)
+  if (e.key === 'h' || e.key === 'H') {
+    if (!(active && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA'))) {
+      e.preventDefault();
+      flipSelectionHorizontal();
+      return;
+    }
+  }
+
   if (e.code === 'Space') {
     e.preventDefault();
     if (isPlaying) stopPlayback(); else startPlayback();
     return;
   }
-  if (e.ctrlKey) {
-    const stepPx = 40;
-    switch (e.key) {
-      case 'ArrowUp': container.scrollTop -= stepPx; e.preventDefault(); break;
-      case 'ArrowDown': container.scrollTop += stepPx; e.preventDefault(); break;
-      case 'ArrowLeft': container.scrollLeft -= stepPx; e.preventDefault(); break;
-      case 'ArrowRight': container.scrollLeft += stepPx; e.preventDefault(); break;
+  
+    // Ctrl + Arrow Keys: Move Selection
+    if (e.ctrlKey) {
+      let dStep = 0, dPitch = 0;
+      if (e.key === 'ArrowUp') dPitch = -1;
+      if (e.key === 'ArrowDown') dPitch = 1;
+      if (e.key === 'ArrowLeft') dStep = -1;
+      if (e.key === 'ArrowRight') dStep = 1;
+      
+      moveSelection(dStep, dPitch);
+    } else {
+      // Arrow Keys (No Ctrl): Pan View
+      switch (e.key) {
+        case 'ArrowUp': container.scrollTop -= CELL_H; break;
+        case 'ArrowDown': container.scrollTop += CELL_H; break;
+        case 'ArrowLeft': container.scrollLeft -= CELL_W; break;
+        case 'ArrowRight': container.scrollLeft += CELL_W; break;
+      }
     }
-    return;
-  }
 });
 
 window.addEventListener('keydown', e => { if (e.key === 'Control') canvas.style.cursor = 'crosshair'; });
@@ -1646,11 +2065,10 @@ function getCornerAt(mx, my) {
   const instIdx = (top ? 0 : 2) + (left ? 0 : 1);
   
   const mask = notes[step][pitch];
-  const isPause = (mask & (1 << (instIdx + 4))) !== 0;
   const isInst = (mask & (1 << instIdx)) !== 0;
   
-  if (isPause || isInst) {
-    return { step, pitch, instIdx, isPause };
+  if (isInst) {
+    return { step, pitch, instIdx };
   }
   return null;
 }
@@ -1660,31 +2078,56 @@ canvas.addEventListener('mousedown', e => {
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
   
-  // FIX: Store absolute client coordinates so 'mouseup' can calculate correctly
   lastMouseX = e.clientX;
   lastMouseY = e.clientY;
 
   if (e.button === 0 && e.ctrlKey) {
     const clickedCorner = getCornerAt(mx, my);
     
-    if (clickedCorner && selectedCorners.some(c => 
+    // NEW LOGIC: Deselect with Ctrl+Shift+Click
+    if (e.shiftKey && clickedCorner) {
+        const selectedIndex = selectedCorners.findIndex(c => 
+          c.step === clickedCorner.step && 
+          c.pitch === clickedCorner.pitch && 
+          c.instIdx === clickedCorner.instIdx
+        );
+        if (selectedIndex !== -1) {
+          selectedCorners.splice(selectedIndex, 1);
+          redrawAll();
+        }
+        return;
+    }
+    
+    if (clickedCorner) {
+      // Check if we clicked an ALREADY selected corner
+      const isSelected = selectedCorners.some(c => 
         c.step === clickedCorner.step && 
         c.pitch === clickedCorner.pitch && 
-        c.instIdx === clickedCorner.instIdx && 
-        c.isPause === clickedCorner.isPause)) {
-      
-      isDraggingSelection = true;
-      dragStart.x = mx;
-      dragStart.y = my;
-      pushUndo(); 
-    } else {
-      isSelecting = true;
-      selectionRect.x1 = mx;
-      selectionRect.y1 = my;
-      selectionRect.x2 = mx;
-      selectionRect.y2 = my;
-      selectedCorners = [];
+        c.instIdx === clickedCorner.instIdx
+      );
+
+      if (isSelected) {
+        // START DRAG: We clicked a selected note, but we wait for movement
+        // to confirm it's a drag and not just a modifier click.
+        isDraggingSelection = true; 
+        dragStart.x = mx;
+        dragStart.y = my;
+        // We pushUndo() later in mouseup if actual movement happened
+      } else {
+        // SELECT: Clicked an unselected note. Add it to selection.
+        selectedCorners.push(clickedCorner);
+        redrawAll();
+      }
+      return; 
     }
+    
+    // If clicked on empty space, start selection box
+    isSelecting = true;
+    selectionRect.x1 = mx;
+    selectionRect.y1 = my;
+    selectionRect.x2 = mx;
+    selectionRect.y2 = my;
+    selectedCorners = [];
     return;
   }
 
@@ -1777,7 +2220,7 @@ window.addEventListener('mouseup', e => {
          if (s < 0 || s >= STEPS || p < 0 || p >= PITCHES.length) continue;
          
          const mask = notes[s][p];
-         if (mask === 0) continue;
+         if (mask === 0) continue; // Optimization: Skip completely empty cells
          
          const cellX = s * CELL_W;
          const cellY = p * CELL_H;
@@ -1796,11 +2239,12 @@ window.addEventListener('mouseup', e => {
             const cy = c.y + h2/2;
             
             if (cx >= x1 && cx <= x2 && cy >= y1 && cy <= y2) {
-                const isInst = (mask & (1 << c.idx)) !== 0;
-                const isPause = (mask & (1 << (c.idx + 4))) !== 0;
-                
-                if (isInst) selectedCorners.push({ step: s, pitch: p, instIdx: c.idx, isPause: false });
-                else if (isPause) selectedCorners.push({ step: s, pitch: p, instIdx: c.idx, isPause: true });
+                const instBit = 1 << c.idx;
+                // FIX: Only select if an Instrument Note actually exists here
+                // This prevents selecting empty spaces or 'pause' markers
+                if (mask & instBit) {
+                    selectedCorners.push({ step: s, pitch: p, instIdx: c.idx});
+                }
             }
          });
       }
@@ -1817,7 +2261,7 @@ window.addEventListener('mouseup', e => {
 
     if (stepDelta !== 0 || pitchDelta !== 0) {
       selectedCorners.forEach(c => {
-        const bit = c.isPause ? (1 << (c.instIdx + 4)) : (1 << c.instIdx);
+        const bit = 1 << c.instIdx;
         notes[c.step][c.pitch] &= ~bit;
       });
 
@@ -1825,7 +2269,7 @@ window.addEventListener('mouseup', e => {
         const newStep = c.step + stepDelta;
         const newPitch = c.pitch + pitchDelta;
         if (newStep >= 0 && newStep < STEPS && newPitch >= 0 && newPitch < PITCHES.length) {
-          const bit = c.isPause ? (1 << (c.instIdx + 4)) : (1 << c.instIdx);
+          const bit = 1 << c.instIdx;
           notes[newStep][newPitch] |= bit;
           
           c.step = newStep;
@@ -1905,7 +2349,12 @@ let audioCtx = null;
 let playSource = null; 
 
 function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
-function pitchToMidi(idx) { return 24 + idx; }
+
+function pitchToMidi(idx) {
+  // PITCHES[0] is B7 (MIDI 107), PITCHES[last] is C1 (MIDI 24)
+  // Formula: Highest MIDI (107) - index
+  return 107 - idx; 
+}
 
 function scheduleNote(ctx, start, dur, pitchIdx, instIdx) {
   start = Math.max(0, start);
@@ -1996,46 +2445,40 @@ let renderId = 0;
 async function refreshLiveAudio() {
   if (!isPlaying || !audioCtx) return;
   
-  // Increment ID to handle race conditions (ignore stale renders)
   const myId = ++renderId;
-  
   const buffer = await renderSong();
   
-  // If a newer render started, or playback stopped, abort
   if (myId !== renderId || !isPlaying) return;
-  
-  // If buffer is empty (no notes), stop
   if (!buffer) {
       stopPlayback();
       return;
   }
 
-  // 1. Capture current time state
+  const isLooping = document.getElementById('loop').checked;
   const elapsed = audioCtx.currentTime - playStartTime;
-
-  // 2. Stop the old source immediately
+  
   if (playSource) {
     try {
-      playSource.onended = null; // Prevent stopPlayback trigger
+      playSource.onended = null;
       playSource.stop();
       playSource.disconnect();
     } catch (e) {}
   }
 
-  // 3. Create and start new source
+  // Calculate offset from current scroll position
+  const scrollPixels = container.scrollLeft;
+  let offsetSeconds = (scrollPixels / CELL_W) * stepSec;
+  
+  if (offsetSeconds >= buffer.duration) offsetSeconds = 0;
+
   playSource = audioCtx.createBufferSource();
   playSource.buffer = buffer;
-  playSource.loop = true; // Always loop the audio buffer
+  playSource.loop = isLooping;
   playSource.connect(audioCtx.destination);
   
-  // 4. Calculate offset to resume from
-  // We wrap the offset using modulo (%) to handle cases where elapsed > new duration
-  const offset = elapsed % buffer.duration;
-  
-  playSource.start(0, offset);
+  playSource.start(0, offsetSeconds);
 
-  // 5. Update timing vars for visuals
-  playStartTime = audioCtx.currentTime - offset;
+  playStartTime = audioCtx.currentTime - offsetSeconds;
   currentBufferDuration = buffer.duration;
 }
 
@@ -2047,36 +2490,54 @@ let playStartTime = 0;
 let currentBufferDuration = 0;
 
 async function startPlayback() {
-  // If already playing, stop the previous instance cleanly
   if (isPlaying) stopPlayback();
 
   const requestId = ++playRequestId;
+  const isLooping = document.getElementById('loop').checked;
 
   const buffer = await renderSong();
   
-  if (requestId !== playRequestId) return; // Aborted
+  if (requestId !== playRequestId) return;
 
   if (!audioCtx || audioCtx.state === 'closed') audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') await audioCtx.resume();
   
   if (buffer) {
+    // Initialize phase tracking variables
+    window.playheadPhase = 'left_to_center'; // 'left_to_center', 'center_scroll', 'center_to_right'
+    window.centerThreshold = container.clientWidth / 2;
+    window.phaseTransitionTime = (window.centerThreshold / CELL_W) * stepSec; // Time to reach center
+    
+    const scrollPixels = container.scrollLeft;
+    let offsetSeconds = (scrollPixels / CELL_W) * stepSec;
+    
+    if (offsetSeconds >= buffer.duration) offsetSeconds = 0;
+
     playSource = audioCtx.createBufferSource();
     playSource.buffer = buffer;
     playSource.connect(audioCtx.destination);
+    playSource.loop = isLooping;
+    playSource.start(0, offsetSeconds);
     
-    // Always set loop=true for seamless audio.
-    // We will stop it manually if the user unchecks the box at the right time.
-    playSource.loop = true;
-    
-    playSource.start(0);
     currentBufferDuration = buffer.duration;
-    playStartTime = audioCtx.currentTime;
+    playStartTime = audioCtx.currentTime - offsetSeconds;
+    
+    if (!isLooping) {
+      playSource.onended = stopPlayback;
+    }
   } else {
     currentBufferDuration = 0;
     return; 
   }
   
   isPlaying = true;
+
+  // --- UPDATE BUTTON STATE ---
+  const btn = document.getElementById('playBtn');
+  btn.textContent = "⏹ Stop";
+  btn.style.backgroundColor = "yellow";
+  btn.style.color = "black";
+  
   drawPlayHead();
 }
 
@@ -2088,9 +2549,14 @@ function stopPlayback() {
   
   isPlaying = false;
   
+  // Reset phase tracking
+  window.playheadPhase = null;
+  window.centerThreshold = null;
+  window.phaseTransitionTime = null;
+  
   if (playSource) {
     try {
-      playSource.onened = null;
+      playSource.onended = null;
       playSource.stop();
       playSource.disconnect();
     } catch(e) { }
@@ -2098,43 +2564,90 @@ function stopPlayback() {
   }
   
   playStartTime = 0;
+
+  // --- UPDATE BUTTON STATE ---
+  const btn = document.getElementById('playBtn');
+  btn.textContent = "▶ Play";
+  btn.style.backgroundColor = "green";
+  btn.style.color = "white";
+  // ----------------------------
+  
   redrawAll();
 }
 
 function drawPlayHead() {
   if (!isPlaying || !audioCtx) return;
-  
+
   const elapsed = audioCtx.currentTime - playStartTime;
   const isLooping = document.getElementById('loop').checked;
-  
-  // 1. Handle End of Song for Non-Looping mode
-  // If we are NOT looping and time is up, stop.
+
+  // Handle Loop/Stop logic
   if (!isLooping && elapsed >= currentBufferDuration) {
     stopPlayback();
     return;
   }
+
+  const visualTime = isLooping ? (elapsed % currentBufferDuration) : Math.min(elapsed, currentBufferDuration);
+
+  // 1. Calculate the ABSOLUTE pixel position on the canvas
+  const playheadCanvasX = (visualTime / stepSec) * CELL_W; 
   
-  // 2. Calculate visual position
-  // If looping, wrap around. If not, clamp to duration.
-  let visualTime;
-  if (isLooping) {
-    visualTime = elapsed % currentBufferDuration;
+  const viewportWidth = container.clientWidth;
+  const centerPoint = viewportWidth / 2;
+  const maxScroll = canvas.width - viewportWidth;
+
+  // 2. Calculate Scroll Position (The "Camera")
+  let targetScroll = 0;
+
+  if (playheadCanvasX <= centerPoint) {
+    // Phase 1: Near the start, don't scroll
+    targetScroll = 0;
+  } else if (playheadCanvasX >= canvas.width - centerPoint) {
+    // Phase 3: Near the end, stop scrolling at max
+    targetScroll = maxScroll;
   } else {
-    visualTime = Math.min(elapsed, currentBufferDuration);
+    // Phase 2: Middle, keep playhead centered
+    targetScroll = playheadCanvasX - centerPoint;
   }
-  
-  // 3. Draw the playhead
-  const posX = (visualTime / stepSec) * CELL_W;
-  redrawAll();
+
+  // 3. Apply the scroll to the container
+  container.scrollLeft = targetScroll;
+
+  // 4. Render
+  // IMPORTANT: redrawAll() must render the waveform at its absolute canvas coordinates
+  redrawAll(); 
+
+  // 5. Draw the Playhead at its ABSOLUTE canvas position
+  // Because the container is scrolling, the playhead will appear 
+  // to stay in the center visually.
   ctx.fillStyle = '#ff5722';
-  ctx.fillRect(posX, 0, 2, canvas.height);
-  
+  ctx.fillRect(playheadCanvasX, 0, 2, canvas.height);
+
   playAnim = requestAnimationFrame(drawPlayHead);
 }
 
 /* -------------------------------------------------
    EXPORT & CLEAR
    ------------------------------------------------- */
+function exportJson() {
+  const list = generateMelodyList();
+  const data = { 
+    name: "Rolldiy Composition",
+    date: new Date().toISOString(),
+    bpm: TEMPO,
+    subdivision: SUBDIV,
+    notes: list 
+  };
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `rollidy_${new Date().toISOString().slice(0,19)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 async function exportWav() {
   stopPlayback();
   const buffer = await renderSong();
@@ -2315,14 +2828,100 @@ doGenerateBtn.addEventListener('click', () => {
   genModal.style.display = 'none';
 });
 
+function showHelp() {
+  // Create modal container
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.style.display = 'block';
+  
+  // Close when clicking outside the content
+  modal.onclick = (e) => { 
+    if(e.target === modal) document.body.removeChild(modal); 
+  };
+
+  // Modal content
+  const content = document.createElement('div');
+  content.className = 'modal-content';
+  content.style.width = '500px';
+  content.style.maxWidth = '90%';
+  
+  // Added a modal-header with a close button (id="dynamicHelpClose")
+  const helpHTML = `
+    <div class="modal-header">
+      <h2>Help & Shortcuts</h2>
+      <span class="close" id="dynamicHelpClose">&times;</span>
+    </div>
+    <div style="line-height: 1.6; font-size: 13px; max-height: 400px; overflow-y: auto; padding: 20px; padding-top: 0;">
+      <h3>Playback</h3>
+      <ul>
+        <li><b>Space</b> - Play from current position / Stop</li>
+        <li><b>Long Press Play</b> - Open Melody Table</li>
+      </ul>
+      
+      <h3>Editing Notes</h3>
+      <ul>
+        <li><b>Left Click</b> - Place / Toggle Note</li>
+        <li><b>Ctrl + Left Click</b> - Select</li>
+        <li><b>Ctrl + Left Click + Drag</b> - Drag Selection</li>
+        <li><b>Ctrl + Arrow Keys</b> - Move Selection</li>
+        <li><b>Right Click + Drag</b> - Pan View (Scroll)</li>
+        <li><b>Delete / Backspace</b> - Delete Selected Notes</li>
+      </ul>
+
+      <h3>Selection & Movement</h3>
+      <ul>
+        <li><b>Arrow Keys</b> - Pan View (Scroll)</li>
+        <li><b>Ctrl + Drag</b> - Box Select</li>
+        <li><b>A</b> - Select All Notes</li>
+        <li><b>Ctrl + Arrows</b> - Move Selection</li>
+        <li><b>H</b> - Flip Selection Horizontally</li>
+        <li><b>V</b> - Flip Selection Vertically</li>
+      </ul>
+
+      <h3>Clipboard & History</h3>
+      <ul>
+        <li><b>Ctrl + C</b> - Copy Selection</li>
+        <li><b>Ctrl + V</b> - Paste Selection</li>
+        <li><b>X</b> / <b>Ctrl + X</b> - Cut Selection</li>
+        <li><b>Z</b> / <b>Ctrl + Z</b> - Undo</li>
+        <li><b>Y</b> / <b>Ctrl + Y</b> - Redo</li>
+      </ul>
+    </div>
+  `;
+
+  content.innerHTML = helpHTML;
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+
+  // Attach event listener to the new close button
+  const closeBtn = document.getElementById('dynamicHelpClose');
+  if (closeBtn) {
+    closeBtn.onclick = () => document.body.removeChild(modal);
+  }
+}
 /* -------------------------------------------------
    INIT
    ------------------------------------------------- */
 populateWaveTypeSelector();
 
+// Scroll to C4 at the bottom
 const c4Index = PITCHES.indexOf('C4');
 if (c4Index !== -1) {
-    container.scrollTop = c4Index * CELL_H;
+    // We calculate the scroll position to place C4 at the bottom edge of the viewport
+    // We use a small timeout to ensure the container has rendered dimensions
+    setTimeout(() => {
+        const viewHeight = container.clientHeight;
+        // Position = (Row Top) - (Viewport Height) + (Row Height)
+        // We want the bottom of C4 to align with the bottom of the view (approx)
+        const targetScroll = (c4Index * CELL_H) - viewHeight + CELL_H;
+        
+        // Clamp to valid scroll range
+        const maxScroll = canvas.height - viewHeight;
+        container.scrollTop = Math.max(0, Math.min(targetScroll, maxScroll));
+        
+        // Sync labels
+        labelsCol.scrollTop = container.scrollTop;
+    }, 100);
 }
 
 redrawAll();
