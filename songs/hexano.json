@@ -1,0 +1,99 @@
+{
+  "name": "Rolldiy Composition",
+  "date": "2026-03-13T14:09:49.877Z",
+  "bpm": 60,
+  "subdivision": 4,
+  "notes": [
+    {
+      "note": "C5",
+      "freq": 523.2511306011972,
+      "time": 0,
+      "duration": 500,
+      "instrument": 0
+    },
+    {
+      "note": "D5",
+      "freq": 587.3295358348151,
+      "time": 500,
+      "duration": 500,
+      "instrument": 0
+    },
+    {
+      "note": "E5",
+      "freq": 659.2551138257398,
+      "time": 1000,
+      "duration": 500,
+      "instrument": 0
+    },
+    {
+      "note": "F5",
+      "freq": 698.4564628660078,
+      "time": 1500,
+      "duration": 500,
+      "instrument": 0
+    },
+    {
+      "note": "A5",
+      "freq": 880,
+      "time": 2000,
+      "duration": 750,
+      "instrument": 0
+    },
+    {
+      "note": "G5",
+      "freq": 783.9908719634985,
+      "time": 2750,
+      "duration": 750,
+      "instrument": 0
+    },
+    {
+      "note": "A5",
+      "freq": 880,
+      "time": 3750,
+      "duration": 750,
+      "instrument": 0
+    },
+    {
+      "note": "G5",
+      "freq": 783.9908719634985,
+      "time": 4500,
+      "duration": 250,
+      "instrument": 0
+    },
+    {
+      "note": "F5",
+      "freq": 698.4564628660078,
+      "time": 4750,
+      "duration": 250,
+      "instrument": 0
+    },
+    {
+      "note": "E5",
+      "freq": 659.2551138257398,
+      "time": 5000,
+      "duration": 750,
+      "instrument": 0
+    },
+    {
+      "note": "G5",
+      "freq": 783.9908719634985,
+      "time": 5750,
+      "duration": 500,
+      "instrument": 0
+    },
+    {
+      "note": "D5",
+      "freq": 587.3295358348151,
+      "time": 6250,
+      "duration": 500,
+      "instrument": 0
+    },
+    {
+      "note": "D5",
+      "freq": 587.3295358348151,
+      "time": 7000,
+      "duration": 250,
+      "instrument": 3
+    }
+  ]
+}
