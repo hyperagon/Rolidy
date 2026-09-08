@@ -1,0 +1,120 @@
+{
+  "name": "Rolling Melody",
+  "date": "2026-09-07T15:40:02.413Z",
+  "bpm": 120,
+  "subdivision": 4,
+  "notes": [
+    {
+      "note": "D4",
+      "freq": 293.6647679174076,
+      "time": 0,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "D4",
+      "freq": 293.6647679174076,
+      "time": 125,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "F4",
+      "freq": 349.2282314330039,
+      "time": 250,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "E4",
+      "freq": 329.6275569128699,
+      "time": 500,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "D4",
+      "freq": 293.6647679174076,
+      "time": 625,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "C6",
+      "freq": 1046.5022612023945,
+      "time": 875,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "D6",
+      "freq": 1174.6590716696303,
+      "time": 1000,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "C6",
+      "freq": 1046.5022612023945,
+      "time": 1125,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "C#5",
+      "freq": 554.3652619537442,
+      "time": 1375,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "C#5",
+      "freq": 554.3652619537442,
+      "time": 1500,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "A#4",
+      "freq": 466.1637615180899,
+      "time": 1625,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "B4",
+      "freq": 493.8833012561241,
+      "time": 1875,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "C#5",
+      "freq": 554.3652619537442,
+      "time": 2000,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "C6",
+      "freq": 1046.5022612023945,
+      "time": 2250,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "A#5",
+      "freq": 932.3275230361799,
+      "time": 2375,
+      "duration": 125,
+      "instrument": 0
+    },
+    {
+      "note": "C6",
+      "freq": 1046.5022612023945,
+      "time": 2500,
+      "duration": 125,
+      "instrument": 0
+    }
+  ]
+}
